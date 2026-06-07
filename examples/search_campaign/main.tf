@@ -79,10 +79,12 @@ resource "googleads_ad_group_ad" "rsa" {
   path2 = "automation"
 
   responsive_search_ad = {
+    # Google Ads responsive search ads require 3-15 headlines (max 30 characters each)
+    # and 2-4 descriptions (max 90 characters each).
     headlines = [
       "Automate DevOps Workflows",
       "Terraform Managed Campaigns",
-      "Reliable Infrastructure Automation",
+      "Reliable Infra Automation",
     ]
 
     descriptions = [

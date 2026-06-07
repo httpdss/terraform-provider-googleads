@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	frameworkvalidator "github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -102,4 +103,80 @@ func TestValidateCampaignCriterionConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateResponsiveSearchAdConfig(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		data adGroupAdModel
+		want bool
+	}{
+		{
+			name: "valid RSA limits",
+			data: adGroupAdModel{ResponsiveSearchAd: rsaModel{
+				Headlines:    testStringList("Headline One", "Headline Two", "Headline Three"),
+				Descriptions: testStringList("Description one", "Description two"),
+			}},
+			want: false,
+		},
+		{
+			name: "requires at least three headlines",
+			data: adGroupAdModel{ResponsiveSearchAd: rsaModel{
+				Headlines:    testStringList("Headline One", "Headline Two"),
+				Descriptions: testStringList("Description one", "Description two"),
+			}},
+			want: true,
+		},
+		{
+			name: "requires at most fifteen headlines",
+			data: adGroupAdModel{ResponsiveSearchAd: rsaModel{
+				Headlines:    testStringList("Headline 1", "Headline 2", "Headline 3", "Headline 4", "Headline 5", "Headline 6", "Headline 7", "Headline 8", "Headline 9", "Headline 10", "Headline 11", "Headline 12", "Headline 13", "Headline 14", "Headline 15", "Headline 16"),
+				Descriptions: testStringList("Description one", "Description two"),
+			}},
+			want: true,
+		},
+		{
+			name: "requires at most four descriptions",
+			data: adGroupAdModel{ResponsiveSearchAd: rsaModel{
+				Headlines:    testStringList("Headline One", "Headline Two", "Headline Three"),
+				Descriptions: testStringList("Description one", "Description two", "Description three", "Description four", "Description five"),
+			}},
+			want: true,
+		},
+		{
+			name: "enforces headline text length",
+			data: adGroupAdModel{ResponsiveSearchAd: rsaModel{
+				Headlines:    testStringList("Headline One", "Headline Two", "This headline is definitely too long"),
+				Descriptions: testStringList("Description one", "Description two"),
+			}},
+			want: true,
+		},
+		{
+			name: "enforces description text length",
+			data: adGroupAdModel{ResponsiveSearchAd: rsaModel{
+				Headlines:    testStringList("Headline One", "Headline Two", "Headline Three"),
+				Descriptions: testStringList("Description one", strings.Repeat("d", 91)),
+			}},
+			want: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var diags diag.Diagnostics
+			validateResponsiveSearchAdConfig(tc.data, &diags)
+			if got := diags.HasError(); got != tc.want {
+				t.Fatalf("HasError() = %v, want %v; diagnostics: %v", got, tc.want, diags)
+			}
+		})
+	}
+}
+
+func testStringList(values ...string) types.List {
+	elements := make([]attr.Value, 0, len(values))
+	for _, value := range values {
+		elements = append(elements, types.StringValue(value))
+	}
+	return types.ListValueMust(types.StringType, elements)
 }

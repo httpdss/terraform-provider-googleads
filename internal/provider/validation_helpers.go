@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -159,6 +160,56 @@ func validateCampaignCriterionConfig(data campaignCriterionModel, diags *diag.Di
 	case "LANGUAGE":
 		if isEmptyString(data.LanguageConstant) {
 			diags.AddAttributeError(path.Root("language_constant"), "Missing language targeting field", "language_constant must be set when type is LANGUAGE.")
+		}
+	}
+}
+
+type adGroupAdConfigValidator struct{}
+
+func (adGroupAdConfigValidator) Description(ctx context.Context) string {
+	return "Validates Google Ads responsive search ad asset count and text length limits."
+}
+func (v adGroupAdConfigValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+func (adGroupAdConfigValidator) ValidateResource(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data adGroupAdModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	validateResponsiveSearchAdConfig(data, &resp.Diagnostics)
+}
+
+func validateResponsiveSearchAdConfig(data adGroupAdModel, diags *diag.Diagnostics) {
+	validateTextAssetList(data.ResponsiveSearchAd.Headlines, path.Root("responsive_search_ad").AtName("headlines"), "headline", 3, 15, 30, diags)
+	validateTextAssetList(data.ResponsiveSearchAd.Descriptions, path.Root("responsive_search_ad").AtName("descriptions"), "description", 2, 4, 90, diags)
+}
+
+func validateTextAssetList(list types.List, attrPath path.Path, name string, minCount, maxCount, maxRunes int, diags *diag.Diagnostics) {
+	if list.IsNull() || list.IsUnknown() {
+		return
+	}
+	elements := list.Elements()
+	if len(elements) < minCount || len(elements) > maxCount {
+		diags.AddAttributeError(
+			attrPath,
+			"Invalid responsive search ad asset count",
+			fmt.Sprintf("Responsive search ads require between %d and %d %ss. Got %d.", minCount, maxCount, name, len(elements)),
+		)
+	}
+	for i, element := range elements {
+		value, ok := element.(types.String)
+		if !ok || value.IsNull() || value.IsUnknown() {
+			continue
+		}
+		text := value.ValueString()
+		if utf8.RuneCountInString(text) > maxRunes {
+			diags.AddAttributeError(
+				attrPath.AtListIndex(i),
+				"Responsive search ad text is too long",
+				fmt.Sprintf("Each responsive search ad %s must be %d characters or fewer. Got %d characters.", name, maxRunes, utf8.RuneCountInString(text)),
+			)
 		}
 	}
 }
