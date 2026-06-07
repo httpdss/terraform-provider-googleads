@@ -59,6 +59,7 @@ Terraform validates common mistakes before calling the Google Ads API:
 - `bidding_strategy_type = "TARGET_ROAS"` requires positive `target_roas`.
 - `googleads_campaign_criterion.type = "LOCATION"` requires `location_geo_target_constant`.
 - `googleads_campaign_criterion.type = "LANGUAGE"` requires `language_constant`.
+- Responsive search ads require 3-15 headlines and 2-4 descriptions. Headlines must be 30 characters or fewer; descriptions must be 90 characters or fewer.
 
 ## Google Ads API access
 
@@ -182,7 +183,7 @@ resource "googleads_ad_group_ad" "rsa" {
     headlines = [
       "Automate DevOps Workflows",
       "Terraform Managed Campaigns",
-      "Reliable Infrastructure Automation",
+      "Reliable Infra Automation",
     ]
 
     descriptions = [

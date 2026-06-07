@@ -34,6 +34,9 @@ func NewAdGroupAdResource() resource.Resource { return &adGroupAdResource{} }
 func (r *adGroupAdResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_ad_group_ad"
 }
+func (r *adGroupAdResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{adGroupAdConfigValidator{}}
+}
 func (r *adGroupAdResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{Description: "Google Ads ad group ad. Version 0.1 supports responsive search ads. Delete uses AdGroupAdService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{
 		"ad_group":   schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{resourceNamePlanModifier("adGroups")}},
