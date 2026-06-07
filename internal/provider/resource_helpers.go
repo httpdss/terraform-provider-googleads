@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -70,12 +71,84 @@ func strPtr(v types.String) any {
 	}
 	return v.ValueString()
 }
+
+var numericID = regexp.MustCompile(`^[0-9]+$`)
+
 func resourceID(customerID, collection, rn string) string {
-	if strings.HasPrefix(rn, "customers/") {
-		return rn
-	}
-	return fmt.Sprintf("customers/%s/%s/%s", customerID, collection, rn)
+	return normalizeCustomerResourceName(customerID, collection, rn)
 }
+
+func normalizeEnum(s string) string {
+	return strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(s), "-", "_"))
+}
+
+func normalizeCustomerResourceName(customerID, collection, s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	customerID = googleads.NormalizeCustomerID(customerID)
+	if strings.HasPrefix(s, "customers/") {
+		parts := strings.Split(s, "/")
+		if len(parts) >= 4 {
+			parts[1] = googleads.NormalizeCustomerID(parts[1])
+		}
+		return strings.Join(parts, "/")
+	}
+	if strings.HasPrefix(s, collection+"/") {
+		if customerID == "" {
+			return s
+		}
+		return fmt.Sprintf("customers/%s/%s", customerID, s)
+	}
+	if numericID.MatchString(s) {
+		if customerID == "" {
+			return s
+		}
+		return fmt.Sprintf("customers/%s/%s/%s", customerID, collection, s)
+	}
+	return s
+}
+
+func normalizeConstantName(prefix, s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.HasPrefix(s, prefix+"/") {
+		return s
+	}
+	if numericID.MatchString(s) {
+		return prefix + "/" + s
+	}
+	return s
+}
+
+func clientCustomerID(c *googleads.Client) string {
+	if c == nil {
+		return ""
+	}
+	return c.CustomerID()
+}
+
+func normalizeResourceState(customerID, collection string, v *types.String) {
+	if v == nil || v.IsNull() || v.IsUnknown() {
+		return
+	}
+	*v = types.StringValue(normalizeCustomerResourceName(customerID, collection, v.ValueString()))
+}
+
+func normalizeConstantState(prefix string, v *types.String) {
+	if v == nil || v.IsNull() || v.IsUnknown() {
+		return
+	}
+	*v = types.StringValue(normalizeConstantName(prefix, v.ValueString()))
+}
+
+func normalizeEnumState(v *types.String) {
+	if v == nil || v.IsNull() || v.IsUnknown() || v.ValueString() == "" {
+		return
+	}
+	*v = types.StringValue(normalizeEnum(v.ValueString()))
+}
+
 func setCreated(id string, idp *types.String, rnp *types.String) {
 	*idp = types.StringValue(id)
 	*rnp = types.StringValue(id)
@@ -90,6 +163,61 @@ func updateOp(obj map[string]any, mask []string) []map[string]any {
 	return []map[string]any{{"update": obj, "updateMask": strings.Join(mask, ",")}}
 }
 func createOp(obj map[string]any) []map[string]any { return []map[string]any{{"create": obj}} }
+
+type normalizeStringPlanModifier struct {
+	description string
+	normalize   func(string) string
+}
+
+func (m normalizeStringPlanModifier) Description(ctx context.Context) string { return m.description }
+func (m normalizeStringPlanModifier) MarkdownDescription(ctx context.Context) string {
+	return m.description
+}
+func (m normalizeStringPlanModifier) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	if req.PlanValue.IsNull() || req.PlanValue.IsUnknown() {
+		return
+	}
+	resp.PlanValue = types.StringValue(m.normalize(req.PlanValue.ValueString()))
+}
+
+func enumStringPlanModifier() planmodifier.String {
+	return normalizeStringPlanModifier{description: "Normalizes enum values to Google Ads uppercase snake case.", normalize: normalizeEnum}
+}
+
+type resourceNameStringPlanModifier struct{ collection string }
+
+func (m resourceNameStringPlanModifier) Description(ctx context.Context) string {
+	return "Normalizes Google Ads resource names and suppresses diffs for equivalent numeric IDs after creation/import."
+}
+func (m resourceNameStringPlanModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+func (m resourceNameStringPlanModifier) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	if req.PlanValue.IsNull() || req.PlanValue.IsUnknown() {
+		return
+	}
+	planned := normalizeCustomerResourceName("", m.collection, req.PlanValue.ValueString())
+	state := ""
+	if !req.StateValue.IsNull() && !req.StateValue.IsUnknown() {
+		state = normalizeCustomerResourceName("", m.collection, req.StateValue.ValueString())
+	}
+	shortID := strings.TrimSpace(req.PlanValue.ValueString())
+	if state != "" && numericID.MatchString(shortID) && strings.HasSuffix(state, "/"+m.collection+"/"+shortID) {
+		planned = state
+	}
+	if state != "" && strings.HasPrefix(shortID, m.collection+"/") && strings.HasSuffix(state, "/"+shortID) {
+		planned = state
+	}
+	resp.PlanValue = types.StringValue(planned)
+}
+
+func resourceNamePlanModifier(collection string) planmodifier.String {
+	return resourceNameStringPlanModifier{collection: collection}
+}
+func constantNamePlanModifier(prefix string) planmodifier.String {
+	return normalizeStringPlanModifier{description: "Normalizes Google Ads constant numeric IDs to resource names.", normalize: func(s string) string { return normalizeConstantName(prefix, s) }}
+}
+
 func stringList(ctx context.Context, list types.List, diags *diag.Diagnostics) []string {
 	var xs []string
 	if list.IsNull() || list.IsUnknown() {

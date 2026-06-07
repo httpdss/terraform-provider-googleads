@@ -3,10 +3,12 @@ package provider
 import (
 	"context"
 	"fmt"
+
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/httpdss/terraform-provider-googleads/internal/googleads"
 )
@@ -27,9 +29,25 @@ func (r *campaignCriterionResource) Metadata(ctx context.Context, req resource.M
 	resp.TypeName = req.ProviderTypeName + "_campaign_criterion"
 }
 func (r *campaignCriterionResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{Description: "Google Ads campaign criterion supporting location and language targeting. Delete uses CampaignCriterionService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{"campaign": schema.StringAttribute{Required: true}, "type": schema.StringAttribute{Required: true, Description: "LOCATION or LANGUAGE."}, "location_geo_target_constant": schema.StringAttribute{Optional: true, Description: "Geo target constant resource name, e.g. geoTargetConstants/2840 for United States."}, "language_constant": schema.StringAttribute{Optional: true, Description: "Language constant resource name, e.g. languageConstants/1000 for English."}, "negative": schema.BoolAttribute{Optional: true}})}
+	resp.Schema = schema.Schema{Description: "Google Ads campaign criterion supporting location and language targeting. Delete uses CampaignCriterionService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{
+		"campaign":                     schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{resourceNamePlanModifier("campaigns")}},
+		"type":                         schema.StringAttribute{Required: true, Description: "LOCATION or LANGUAGE.", PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"location_geo_target_constant": schema.StringAttribute{Optional: true, Description: "Geo target constant resource name, e.g. geoTargetConstants/2840 for United States. Numeric IDs such as 2840 are accepted.", PlanModifiers: []planmodifier.String{constantNamePlanModifier("geoTargetConstants")}},
+		"language_constant":            schema.StringAttribute{Optional: true, Description: "Language constant resource name, e.g. languageConstants/1000 for English. Numeric IDs such as 1000 are accepted.", PlanModifiers: []planmodifier.String{constantNamePlanModifier("languageConstants")}},
+		"negative":                     schema.BoolAttribute{Optional: true},
+	})}
+}
+func (r *campaignCriterionResource) normalize(d *campaignCriterionModel) {
+	customerID := clientCustomerID(r.client)
+	normalizeResourceState(customerID, "campaigns", &d.Campaign)
+	normalizeResourceState(customerID, "campaignCriteria", &d.ResourceName)
+	normalizeResourceState(customerID, "campaignCriteria", &d.ID)
+	normalizeEnumState(&d.Type)
+	normalizeConstantState("geoTargetConstants", &d.LocationGeoTargetConstant)
+	normalizeConstantState("languageConstants", &d.LanguageConstant)
 }
 func (r *campaignCriterionResource) obj(d campaignCriterionModel) map[string]any {
+	r.normalize(&d)
 	o := map[string]any{"campaign": stringValue(d.Campaign), "negative": boolValue(d.Negative)}
 	if stringValue(d.Type) == "LOCATION" {
 		o["location"] = map[string]any{"geoTargetConstant": stringValue(d.LocationGeoTargetConstant)}
@@ -44,6 +62,7 @@ func (r *campaignCriterionResource) Create(ctx context.Context, req resource.Cre
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.normalize(&d)
 	out, err := r.client.Mutate(ctx, "campaignCriteria", createOp(r.obj(d)))
 	if err != nil {
 		addAPIError(&resp.Diagnostics, "Create campaign criterion failed", err)
@@ -78,6 +97,7 @@ func (r *campaignCriterionResource) Update(ctx context.Context, req resource.Upd
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.normalize(&d)
 	o := r.obj(d)
 	o["resourceName"] = stringValue(d.ResourceName)
 	_, err := r.client.Mutate(ctx, "campaignCriteria", updateOp(o, []string{"negative", "location", "language"}))
@@ -104,6 +124,7 @@ func (r *campaignCriterionResource) ImportState(ctx context.Context, req resourc
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("resource_name"), req.ID)...)
 }
 func (r *campaignCriterionResource) read(ctx context.Context, d *campaignCriterionModel, diags *diag.Diagnostics) bool {
+	r.normalize(d)
 	q := fmt.Sprintf("SELECT campaign_criterion.resource_name, campaign_criterion.campaign, campaign_criterion.negative, campaign_criterion.type, campaign_criterion.location.geo_target_constant, campaign_criterion.language.language_constant FROM campaign_criterion WHERE campaign_criterion.resource_name = '%s'", stringValue(d.ResourceName))
 	res, err := r.client.Search(ctx, q)
 	if err != nil {

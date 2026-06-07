@@ -3,10 +3,12 @@ package provider
 import (
 	"context"
 	"fmt"
+
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/httpdss/terraform-provider-googleads/internal/googleads"
 )
@@ -27,9 +29,24 @@ func (r *adGroupResource) Metadata(ctx context.Context, req resource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_ad_group"
 }
 func (r *adGroupResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{Description: "Google Ads ad group. Delete uses AdGroupService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{"campaign": schema.StringAttribute{Required: true}, "name": schema.StringAttribute{Required: true}, "status": schema.StringAttribute{Optional: true, Computed: true}, "type": schema.StringAttribute{Optional: true, Computed: true}, "cpc_bid_micros": schema.Int64Attribute{Optional: true}})}
+	resp.Schema = schema.Schema{Description: "Google Ads ad group. Delete uses AdGroupService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{
+		"campaign":       schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{resourceNamePlanModifier("campaigns")}},
+		"name":           schema.StringAttribute{Required: true},
+		"status":         schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"type":           schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"cpc_bid_micros": schema.Int64Attribute{Optional: true},
+	})}
+}
+func (r *adGroupResource) normalize(d *adGroupModel) {
+	customerID := clientCustomerID(r.client)
+	normalizeResourceState(customerID, "campaigns", &d.Campaign)
+	normalizeResourceState(customerID, "adGroups", &d.ResourceName)
+	normalizeResourceState(customerID, "adGroups", &d.ID)
+	normalizeEnumState(&d.Status)
+	normalizeEnumState(&d.Type)
 }
 func (r *adGroupResource) obj(d adGroupModel) map[string]any {
+	r.normalize(&d)
 	o := map[string]any{"campaign": stringValue(d.Campaign), "name": stringValue(d.Name), "status": def(d.Status, "PAUSED"), "type": def(d.Type, "SEARCH_STANDARD")}
 	if int64Value(d.CPCBidMicros) > 0 {
 		o["cpcBidMicros"] = int64Value(d.CPCBidMicros)
@@ -42,6 +59,7 @@ func (r *adGroupResource) Create(ctx context.Context, req resource.CreateRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.normalize(&d)
 	out, err := r.client.Mutate(ctx, "adGroups", createOp(r.obj(d)))
 	if err != nil {
 		addAPIError(&resp.Diagnostics, "Create ad group failed", err)
@@ -76,6 +94,7 @@ func (r *adGroupResource) Update(ctx context.Context, req resource.UpdateRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.normalize(&d)
 	o := r.obj(d)
 	o["resourceName"] = stringValue(d.ResourceName)
 	_, err := r.client.Mutate(ctx, "adGroups", updateOp(o, []string{"name", "status", "type", "cpc_bid_micros"}))
@@ -102,6 +121,7 @@ func (r *adGroupResource) ImportState(ctx context.Context, req resource.ImportSt
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("resource_name"), req.ID)...)
 }
 func (r *adGroupResource) read(ctx context.Context, d *adGroupModel, diags *diag.Diagnostics) bool {
+	r.normalize(d)
 	q := fmt.Sprintf("SELECT ad_group.resource_name, ad_group.campaign, ad_group.name, ad_group.status, ad_group.type, ad_group.cpc_bid_micros FROM ad_group WHERE ad_group.resource_name = '%s'", stringValue(d.ResourceName))
 	res, err := r.client.Search(ctx, q)
 	if err != nil {

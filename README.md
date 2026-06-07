@@ -38,6 +38,17 @@ You can authenticate either with:
 
 Secrets are marked sensitive in the Terraform schema and are not logged by the provider.
 
+## Normalization rules
+
+The provider normalizes equivalent Google Ads inputs to avoid unnecessary Terraform diffs:
+
+- `customer_id` and `login_customer_id` may be set with or without dashes. They are sent to Google Ads without dashes.
+- Enum-like fields such as `status`, `delivery_method`, `advertising_channel_type`, `bidding_strategy_type`, `type`, and `match_type` are normalized to uppercase snake case. For example, `manual-cpc` becomes `MANUAL_CPC`.
+- Google Ads resource references may be full resource names such as `customers/1234567890/campaigns/111`. If a full resource name contains a dashed customer ID, the customer segment is normalized.
+- For customer-scoped references such as `campaign_budget`, `campaign`, and `ad_group`, numeric IDs and collection-relative IDs are accepted in CRUD calls and expanded with the configured `customer_id` where safe. Examples: `111` or `campaigns/111` becomes `customers/<customer_id>/campaigns/111`.
+- For campaign criterion constants, numeric IDs are accepted: `2840` becomes `geoTargetConstants/2840`, and `1000` becomes `languageConstants/1000`.
+- Imported resources still use full Google Ads resource names. After a resource has state, numeric or collection-relative references that point at the same remote object are planned as the canonical resource name to suppress equivalent diffs.
+
 ## Google Ads API access
 
 1. Create or choose a Google Cloud project.
