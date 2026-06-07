@@ -3,16 +3,15 @@ package provider
 import (
 	"context"
 	"fmt"
+
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/httpdss/terraform-provider-googleads/internal/googleads"
 )
-
-var _ validator.String
 
 type adGroupAdResource struct{ baseResource }
 type rsaModel struct {
@@ -35,9 +34,27 @@ func (r *adGroupAdResource) Metadata(ctx context.Context, req resource.MetadataR
 	resp.TypeName = req.ProviderTypeName + "_ad_group_ad"
 }
 func (r *adGroupAdResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{Description: "Google Ads ad group ad. Version 0.1 supports responsive search ads. Delete uses AdGroupAdService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{"ad_group": schema.StringAttribute{Required: true}, "status": schema.StringAttribute{Optional: true, Computed: true}, "final_urls": schema.ListAttribute{Required: true, ElementType: types.StringType}, "path1": schema.StringAttribute{Optional: true}, "path2": schema.StringAttribute{Optional: true}, "responsive_search_ad": schema.SingleNestedAttribute{Required: true, Attributes: map[string]schema.Attribute{"headlines": schema.ListAttribute{Required: true, ElementType: types.StringType}, "descriptions": schema.ListAttribute{Required: true, ElementType: types.StringType}}}})}
+	resp.Schema = schema.Schema{Description: "Google Ads ad group ad. Version 0.1 supports responsive search ads. Delete uses AdGroupAdService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{
+		"ad_group":   schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{resourceNamePlanModifier("adGroups")}},
+		"status":     schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"final_urls": schema.ListAttribute{Required: true, ElementType: types.StringType},
+		"path1":      schema.StringAttribute{Optional: true},
+		"path2":      schema.StringAttribute{Optional: true},
+		"responsive_search_ad": schema.SingleNestedAttribute{Required: true, Attributes: map[string]schema.Attribute{
+			"headlines":    schema.ListAttribute{Required: true, ElementType: types.StringType},
+			"descriptions": schema.ListAttribute{Required: true, ElementType: types.StringType},
+		}},
+	})}
+}
+func (r *adGroupAdResource) normalize(d *adGroupAdModel) {
+	customerID := clientCustomerID(r.client)
+	normalizeResourceState(customerID, "adGroups", &d.AdGroup)
+	normalizeResourceState(customerID, "adGroupAds", &d.ResourceName)
+	normalizeResourceState(customerID, "adGroupAds", &d.ID)
+	normalizeEnumState(&d.Status)
 }
 func (r *adGroupAdResource) obj(ctx context.Context, d adGroupAdModel, diags *diag.Diagnostics) map[string]any {
+	r.normalize(&d)
 	ad := map[string]any{"finalUrls": stringList(ctx, d.FinalURLs, diags), "responsiveSearchAd": map[string]any{"headlines": textAssets(stringList(ctx, d.ResponsiveSearchAd.Headlines, diags)), "descriptions": textAssets(stringList(ctx, d.ResponsiveSearchAd.Descriptions, diags))}}
 	if stringValue(d.Path1) != "" {
 		ad["path1"] = stringValue(d.Path1)
@@ -60,6 +77,7 @@ func (r *adGroupAdResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.normalize(&d)
 	out, err := r.client.Mutate(ctx, "adGroupAds", createOp(r.obj(ctx, d, &resp.Diagnostics)))
 	if err != nil {
 		addAPIError(&resp.Diagnostics, "Create ad group ad failed", err)
@@ -94,6 +112,7 @@ func (r *adGroupAdResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.normalize(&d)
 	o := r.obj(ctx, d, &resp.Diagnostics)
 	o["resourceName"] = stringValue(d.ResourceName)
 	_, err := r.client.Mutate(ctx, "adGroupAds", updateOp(o, []string{"status", "ad.final_urls", "ad.path1", "ad.path2", "ad.responsive_search_ad"}))
@@ -120,6 +139,7 @@ func (r *adGroupAdResource) ImportState(ctx context.Context, req resource.Import
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("resource_name"), req.ID)...)
 }
 func (r *adGroupAdResource) read(ctx context.Context, d *adGroupAdModel, diags *diag.Diagnostics) bool {
+	r.normalize(d)
 	q := fmt.Sprintf("SELECT ad_group_ad.resource_name, ad_group_ad.ad_group, ad_group_ad.status, ad_group_ad.ad.final_urls, ad_group_ad.ad.path1, ad_group_ad.ad.path2, ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.ad.responsive_search_ad.descriptions FROM ad_group_ad WHERE ad_group_ad.resource_name = '%s'", stringValue(d.ResourceName))
 	res, err := r.client.Search(ctx, q)
 	if err != nil {
