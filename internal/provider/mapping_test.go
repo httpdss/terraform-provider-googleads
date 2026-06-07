@@ -24,3 +24,18 @@ func TestKeywordMapping(t *testing.T) {
 		t.Fatalf("bad keyword mapping: %#v", obj)
 	}
 }
+
+func TestAdGroupAdImportReadAssetExtraction(t *testing.T) {
+	finalURLs := stringsFromAny([]any{"https://example.com", "https://example.org"})
+	if len(finalURLs) != 2 || finalURLs[0] != "https://example.com" || finalURLs[1] != "https://example.org" {
+		t.Fatalf("unexpected final urls: %#v", finalURLs)
+	}
+
+	assets := textValuesFromAssets([]any{
+		map[string]any{"text": "Direct REST asset shape"},
+		map[string]any{"asset": map[string]any{"text": "Nested create payload shape"}},
+	})
+	if len(assets) != 2 || assets[0] != "Direct REST asset shape" || assets[1] != "Nested create payload shape" {
+		t.Fatalf("unexpected asset text values: %#v", assets)
+	}
+}
