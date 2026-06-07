@@ -136,6 +136,58 @@ func (r *adGroupAdResource) read(ctx context.Context, d *adGroupAdModel, diags *
 	if ad, ok := aga["ad"].(map[string]any); ok {
 		d.Path1 = types.StringValue(googleads.String(ad, "path1"))
 		d.Path2 = types.StringValue(googleads.String(ad, "path2"))
+		d.FinalURLs = stringListValue(ctx, stringsFromAny(ad["finalUrls"]), diags)
+		if rsa, ok := ad["responsiveSearchAd"].(map[string]any); ok {
+			d.ResponsiveSearchAd.Headlines = stringListValue(ctx, textValuesFromAssets(rsa["headlines"]), diags)
+			d.ResponsiveSearchAd.Descriptions = stringListValue(ctx, textValuesFromAssets(rsa["descriptions"]), diags)
+		}
 	}
 	return true
+}
+
+func stringsFromAny(v any) []string {
+	items, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func textValuesFromAssets(v any) []string {
+	items, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		asset, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if text, ok := asset["text"].(string); ok {
+			out = append(out, text)
+			continue
+		}
+		if nested, ok := asset["asset"].(map[string]any); ok {
+			if text, ok := nested["text"].(string); ok {
+				out = append(out, text)
+			}
+		}
+	}
+	return out
+}
+
+func stringListValue(ctx context.Context, values []string, diags *diag.Diagnostics) types.List {
+	list, listDiags := types.ListValueFrom(ctx, types.StringType, values)
+	diags.Append(listDiags...)
+	if listDiags.HasError() {
+		return types.ListNull(types.StringType)
+	}
+	return list
 }

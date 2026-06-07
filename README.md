@@ -197,12 +197,22 @@ Google Ads resources are generally removed through each service's `remove` opera
 
 ## Imports
 
-Resources can be imported by full Google Ads resource name:
+Resources can be imported by full Google Ads resource name. After importing, run `terraform plan` and update your configuration to match any remote-only values Terraform reads back from Google Ads.
 
 ```bash
-terraform import googleads_campaign.search customers/1234567890/campaigns/111
 terraform import googleads_campaign_budget.search_budget customers/1234567890/campaignBudgets/222
+terraform import googleads_campaign.search customers/1234567890/campaigns/111
+terraform import googleads_ad_group.main customers/1234567890/adGroups/333
+terraform import googleads_ad_group_keyword.keyword customers/1234567890/adGroupCriteria/333~444
+terraform import googleads_ad_group_ad.rsa customers/1234567890/adGroupAds/333~555
+terraform import googleads_campaign_criterion.us customers/1234567890/campaignCriteria/111~2840
 ```
+
+Import notes:
+
+- `googleads_ad_group_ad` reads back required RSA fields including `final_urls`, `path1`, `path2`, `headlines`, and `descriptions` so imported ads can be represented in Terraform configuration.
+- `googleads_campaign_criterion` supports imported location and language criteria in this first version.
+- Google Ads resource names are account-scoped; import with the same `customer_id` and optional `login_customer_id` used by the provider.
 
 ## Development
 
