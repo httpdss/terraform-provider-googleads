@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/httpdss/terraform-provider-googleads/internal/googleads"
 )
@@ -32,8 +33,8 @@ func (r *adGroupResource) Schema(ctx context.Context, req resource.SchemaRequest
 	resp.Schema = schema.Schema{Description: "Google Ads ad group. Delete uses AdGroupService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{
 		"campaign":       schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{resourceNamePlanModifier("campaigns")}},
 		"name":           schema.StringAttribute{Required: true},
-		"status":         schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
-		"type":           schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"status":         schema.StringAttribute{Optional: true, Computed: true, Validators: []validator.String{statusEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"type":           schema.StringAttribute{Optional: true, Computed: true, Validators: []validator.String{adGroupTypeEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
 		"cpc_bid_micros": schema.Int64Attribute{Optional: true},
 	})}
 }

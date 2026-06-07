@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/httpdss/terraform-provider-googleads/internal/googleads"
 )
@@ -28,10 +29,13 @@ func NewCampaignCriterionResource() resource.Resource { return &campaignCriterio
 func (r *campaignCriterionResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_campaign_criterion"
 }
+func (r *campaignCriterionResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{campaignCriterionConfigValidator{}}
+}
 func (r *campaignCriterionResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{Description: "Google Ads campaign criterion supporting location and language targeting. Delete uses CampaignCriterionService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{
 		"campaign":                     schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{resourceNamePlanModifier("campaigns")}},
-		"type":                         schema.StringAttribute{Required: true, Description: "LOCATION or LANGUAGE.", PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"type":                         schema.StringAttribute{Required: true, Description: "LOCATION or LANGUAGE.", Validators: []validator.String{criterionTypeEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
 		"location_geo_target_constant": schema.StringAttribute{Optional: true, Description: "Geo target constant resource name, e.g. geoTargetConstants/2840 for United States. Numeric IDs such as 2840 are accepted.", PlanModifiers: []planmodifier.String{constantNamePlanModifier("geoTargetConstants")}},
 		"language_constant":            schema.StringAttribute{Optional: true, Description: "Language constant resource name, e.g. languageConstants/1000 for English. Numeric IDs such as 1000 are accepted.", PlanModifiers: []planmodifier.String{constantNamePlanModifier("languageConstants")}},
 		"negative":                     schema.BoolAttribute{Optional: true},
