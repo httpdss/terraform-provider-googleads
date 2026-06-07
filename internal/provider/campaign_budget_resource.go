@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/httpdss/terraform-provider-googleads/internal/googleads"
 )
@@ -32,9 +33,9 @@ func (r *campaignBudgetResource) Schema(ctx context.Context, req resource.Schema
 	resp.Schema = schema.Schema{Description: "Google Ads campaign budget. Delete uses CampaignBudgetService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{
 		"name":              schema.StringAttribute{Required: true},
 		"amount_micros":     schema.Int64Attribute{Required: true},
-		"delivery_method":   schema.StringAttribute{Optional: true, Computed: true, Description: "STANDARD or ACCELERATED where supported; defaults to STANDARD.", PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"delivery_method":   schema.StringAttribute{Optional: true, Computed: true, Description: "STANDARD or ACCELERATED where supported; defaults to STANDARD.", Validators: []validator.String{budgetDeliveryMethodEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
 		"explicitly_shared": schema.BoolAttribute{Optional: true, Computed: true},
-		"status":            schema.StringAttribute{Optional: true, Computed: true, Description: "ENABLED or REMOVED. Setting REMOVED is equivalent to delete.", PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"status":            schema.StringAttribute{Optional: true, Computed: true, Description: "ENABLED or REMOVED. Setting REMOVED is equivalent to delete.", Validators: []validator.String{budgetStatusEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
 	})}
 }
 func (r *campaignBudgetResource) normalize(data *campaignBudgetModel) {

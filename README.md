@@ -49,6 +49,17 @@ The provider normalizes equivalent Google Ads inputs to avoid unnecessary Terraf
 - For campaign criterion constants, numeric IDs are accepted: `2840` becomes `geoTargetConstants/2840`, and `1000` becomes `languageConstants/1000`.
 - Imported resources still use full Google Ads resource names. After a resource has state, numeric or collection-relative references that point at the same remote object are planned as the canonical resource name to suppress equivalent diffs.
 
+## Validation rules
+
+Terraform validates common mistakes before calling the Google Ads API:
+
+- Enum-like fields reject unsupported values with a message listing the accepted values. Hyphenated/lowercase input is accepted when it normalizes to a supported Google Ads enum value.
+- Campaign `start_date` and `end_date` must use `YYYY-MM-DD`.
+- `bidding_strategy_type = "TARGET_CPA"` requires positive `target_cpa_micros`.
+- `bidding_strategy_type = "TARGET_ROAS"` requires positive `target_roas`.
+- `googleads_campaign_criterion.type = "LOCATION"` requires `location_geo_target_constant`.
+- `googleads_campaign_criterion.type = "LANGUAGE"` requires `language_constant`.
+
 ## Google Ads API access
 
 1. Create or choose a Google Cloud project.

@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/httpdss/terraform-provider-googleads/internal/googleads"
 )
@@ -41,15 +42,18 @@ func NewCampaignResource() resource.Resource { return &campaignResource{} }
 func (r *campaignResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_campaign"
 }
+func (r *campaignResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{campaignConfigValidator{}}
+}
 func (r *campaignResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{Description: "Google Ads campaign. Delete uses CampaignService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{
 		"name":                     schema.StringAttribute{Required: true},
-		"status":                   schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
-		"advertising_channel_type": schema.StringAttribute{Optional: true, Computed: true, Description: "Defaults to SEARCH.", PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"status":                   schema.StringAttribute{Optional: true, Computed: true, Validators: []validator.String{statusEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"advertising_channel_type": schema.StringAttribute{Optional: true, Computed: true, Description: "Defaults to SEARCH.", Validators: []validator.String{advertisingChannelTypeEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
 		"campaign_budget":          schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{resourceNamePlanModifier("campaignBudgets")}},
-		"start_date":               schema.StringAttribute{Optional: true},
-		"end_date":                 schema.StringAttribute{Optional: true},
-		"bidding_strategy_type":    schema.StringAttribute{Optional: true, Computed: true, Description: "MANUAL_CPC, TARGET_CPA, TARGET_ROAS, etc.", PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"start_date":               schema.StringAttribute{Optional: true, Validators: []validator.String{dateValidator()}},
+		"end_date":                 schema.StringAttribute{Optional: true, Validators: []validator.String{dateValidator()}},
+		"bidding_strategy_type":    schema.StringAttribute{Optional: true, Computed: true, Description: "MANUAL_CPC, TARGET_CPA, TARGET_ROAS, etc.", Validators: []validator.String{biddingStrategyTypeEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
 		"target_cpa_micros":        schema.Int64Attribute{Optional: true},
 		"target_roas":              schema.Float64Attribute{Optional: true},
 		"tracking_url_template":    schema.StringAttribute{Optional: true},

@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/httpdss/terraform-provider-googleads/internal/googleads"
 )
@@ -36,7 +37,7 @@ func (r *adGroupAdResource) Metadata(ctx context.Context, req resource.MetadataR
 func (r *adGroupAdResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{Description: "Google Ads ad group ad. Version 0.1 supports responsive search ads. Delete uses AdGroupAdService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{
 		"ad_group":   schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{resourceNamePlanModifier("adGroups")}},
-		"status":     schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"status":     schema.StringAttribute{Optional: true, Computed: true, Validators: []validator.String{statusEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
 		"final_urls": schema.ListAttribute{Required: true, ElementType: types.StringType},
 		"path1":      schema.StringAttribute{Optional: true},
 		"path2":      schema.StringAttribute{Optional: true},

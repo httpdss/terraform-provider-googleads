@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/httpdss/terraform-provider-googleads/internal/googleads"
 )
@@ -33,8 +34,8 @@ func (r *adGroupKeywordResource) Schema(ctx context.Context, req resource.Schema
 	resp.Schema = schema.Schema{Description: "Google Ads ad group keyword criterion. Negative keywords are represented with criterion.negative=true. Delete uses AdGroupCriterionService remove.", Attributes: mergeAttrs(idAttrs(), map[string]schema.Attribute{
 		"ad_group":       schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{resourceNamePlanModifier("adGroups")}},
 		"text":           schema.StringAttribute{Required: true},
-		"match_type":     schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
-		"status":         schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"match_type":     schema.StringAttribute{Required: true, Validators: []validator.String{keywordMatchTypeEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
+		"status":         schema.StringAttribute{Optional: true, Computed: true, Validators: []validator.String{statusEnum}, PlanModifiers: []planmodifier.String{enumStringPlanModifier()}},
 		"cpc_bid_micros": schema.Int64Attribute{Optional: true},
 		"negative":       schema.BoolAttribute{Optional: true},
 	})}
