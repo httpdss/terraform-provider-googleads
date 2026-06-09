@@ -218,6 +218,10 @@ or set `validate_only = true` in the provider block.
 
 When Google Ads API calls fail, the provider parses `GoogleAdsFailure` details from REST responses and surfaces actionable Terraform diagnostics including the Google Ads error code, message, trigger, field path, and operation index when available. Request credentials and token values are not included in diagnostics.
 
+## Retry behavior
+
+Google Ads API requests are retried conservatively for transient failures: HTTP `429`, HTTP `5xx`, and Google Ads statuses `RESOURCE_EXHAUSTED`, `UNAVAILABLE`, and `DEADLINE_EXCEEDED` when identifiable from an error response. The provider makes up to 3 attempts total with exponential backoff, jitter, and a maximum delay of 2 seconds. Validation and business-rule errors such as `INVALID_ARGUMENT` are not retried.
+
 ## Delete behavior
 
 Google Ads resources are generally removed through each service's `remove` operation rather than physically deleted from historical reporting. The provider uses remove operations for campaign budgets, campaigns, ad groups, ad group criteria, ad group ads, and campaign criteria. Removed resources may remain visible in Google Ads history/reporting, but Terraform removes them from state after a successful destroy.
