@@ -1,6 +1,10 @@
 package googleads
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -45,9 +49,12 @@ func TestParseGoogleAdsFailureDetails(t *testing.T) {
 		}
 	}`)
 
-	msg, details := parseGoogleAdsError(body)
+	msg, status, details := parseGoogleAdsError(body)
 	if msg != "Request contains an invalid argument." {
 		t.Fatalf("message = %q", msg)
+	}
+	if status != "INVALID_ARGUMENT" {
+		t.Fatalf("status = %q", status)
 	}
 	if len(details) != 1 {
 		t.Fatalf("details length = %d", len(details))
@@ -110,5 +117,110 @@ func TestGoogleAdsErrorDiagnosticDetailRedactsSecrets(t *testing.T) {
 	}
 	if got := strings.Count(detail, "[REDACTED]"); got < 4 {
 		t.Fatalf("expected redacted placeholders, got %d in: %s", got, detail)
+	}
+}
+
+func TestDoJSONRetriesHTTPTransientStatus(t *testing.T) {
+	attempts := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if got := r.Header.Get("developer-token"); got != "dev-token" {
+			t.Fatalf("developer-token header = %q", got)
+		}
+		if attempts < 3 {
+			http.Error(w, `{"error":{"message":"rate limited","status":"RESOURCE_EXHAUSTED"}}`, http.StatusTooManyRequests)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer ts.Close()
+
+	client := testRetryClient(ts)
+	var out map[string]any
+	if err := client.doJSON(context.Background(), http.MethodPost, "/test", map[string]any{"x": "y"}, &out); err != nil {
+		t.Fatalf("doJSON returned error: %v", err)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+	if out["ok"] != true {
+		t.Fatalf("decoded response = %#v", out)
+	}
+}
+
+func TestDoJSONRetriesGoogleAdsTransientStatus(t *testing.T) {
+	attempts := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"backend unavailable","status":"UNAVAILABLE"}}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	client := testRetryClient(ts)
+	var out map[string]any
+	if err := client.doJSON(context.Background(), http.MethodPost, "/test", nil, &out); err != nil {
+		t.Fatalf("doJSON returned error: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+}
+
+func TestDoJSONDoesNotRetryValidationErrors(t *testing.T) {
+	attempts := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid field","status":"INVALID_ARGUMENT"}}`))
+	}))
+	defer ts.Close()
+
+	client := testRetryClient(ts)
+	err := client.doJSON(context.Background(), http.MethodPost, "/test", nil, nil)
+	if err == nil {
+		t.Fatal("expected non-retryable error")
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+}
+
+func TestGoogleAdsErrorRetryable(t *testing.T) {
+	cases := []struct {
+		name string
+		err  *GoogleAdsError
+		want bool
+	}{
+		{name: "too many requests", err: &GoogleAdsError{Status: http.StatusTooManyRequests}, want: true},
+		{name: "server error", err: &GoogleAdsError{Status: http.StatusBadGateway}, want: true},
+		{name: "resource exhausted", err: &GoogleAdsError{Status: http.StatusBadRequest, GoogleAdsStatus: "RESOURCE_EXHAUSTED"}, want: true},
+		{name: "unavailable", err: &GoogleAdsError{Status: http.StatusBadRequest, GoogleAdsStatus: "UNAVAILABLE"}, want: true},
+		{name: "deadline exceeded", err: &GoogleAdsError{Status: http.StatusBadRequest, GoogleAdsStatus: "DEADLINE_EXCEEDED"}, want: true},
+		{name: "invalid argument", err: &GoogleAdsError{Status: http.StatusBadRequest, GoogleAdsStatus: "INVALID_ARGUMENT"}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.err.Retryable(); got != tc.want {
+				t.Fatalf("Retryable() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func testRetryClient(ts *httptest.Server) *Client {
+	return &Client{
+		cfg:              Config{DeveloperToken: "dev-token", CustomerID: "1234567890"},
+		httpClient:       ts.Client(),
+		baseURL:          ts.URL,
+		retryMaxAttempts: 3,
+		retryBaseDelay:   0,
+		retryMaxDelay:    0,
 	}
 }

@@ -3,6 +3,7 @@ package googleads
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"regexp"
 	"sort"
 	"strings"
@@ -30,6 +31,9 @@ func (e *GoogleAdsError) DiagnosticDetail() string {
 	} else {
 		fmt.Fprintf(&b, "Google Ads API returned HTTP %d.", e.Status)
 	}
+	if e.GoogleAdsStatus != "" {
+		fmt.Fprintf(&b, "\n- google_ads_status: %s", e.GoogleAdsStatus)
+	}
 	for i, d := range e.Details {
 		fmt.Fprintf(&b, "\n\nError %d:", i+1)
 		if d.ErrorCode != "" {
@@ -54,14 +58,29 @@ func (e *GoogleAdsError) DiagnosticDetail() string {
 	return b.String()
 }
 
-func parseGoogleAdsError(b []byte) (string, []GoogleAdsAPIErrorDetail) {
+func (e *GoogleAdsError) Retryable() bool {
+	if e == nil {
+		return false
+	}
+	if e.Status == http.StatusTooManyRequests || (e.Status >= 500 && e.Status <= 599) {
+		return true
+	}
+	switch e.GoogleAdsStatus {
+	case "RESOURCE_EXHAUSTED", "UNAVAILABLE", "DEADLINE_EXCEEDED":
+		return true
+	}
+	return false
+}
+
+func parseGoogleAdsError(b []byte) (string, string, []GoogleAdsAPIErrorDetail) {
 	var raw map[string]any
 	if json.Unmarshal(b, &raw) != nil {
-		return strings.TrimSpace(redactSecrets(string(b))), nil
+		return strings.TrimSpace(redactSecrets(string(b))), "", nil
 	}
 	errObj, _ := raw["error"].(map[string]any)
 	message, _ := errObj["message"].(string)
-	return redactSecrets(message), parseGoogleAdsFailureDetails(errObj)
+	status, _ := errObj["status"].(string)
+	return redactSecrets(message), status, parseGoogleAdsFailureDetails(errObj)
 }
 
 func parseGoogleAdsFailureDetails(errObj map[string]any) []GoogleAdsAPIErrorDetail {
