@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -44,13 +43,11 @@ type GoogleAdsError struct {
 	Status  int
 	Message string
 	Body    string
+	Details []GoogleAdsAPIErrorDetail
 }
 
 func (e *GoogleAdsError) Error() string {
-	if e.Message != "" {
-		return fmt.Sprintf("google ads api error (status %d): %s", e.Status, e.Message)
-	}
-	return fmt.Sprintf("google ads api error (status %d): %s", e.Status, e.Body)
+	return e.DiagnosticDetail()
 }
 
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
@@ -157,8 +154,8 @@ func (c *Client) doJSON(ctx context.Context, method, path string, payload any, o
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		msg := extractGoogleAdsMessage(b)
-		return &GoogleAdsError{Status: resp.StatusCode, Message: msg, Body: string(b)}
+		msg, details := parseGoogleAdsError(b)
+		return &GoogleAdsError{Status: resp.StatusCode, Message: msg, Body: string(b), Details: details}
 	}
 	if out != nil && len(b) > 0 {
 		if err := json.Unmarshal(b, out); err != nil {
@@ -166,19 +163,6 @@ func (c *Client) doJSON(ctx context.Context, method, path string, payload any, o
 		}
 	}
 	return nil
-}
-
-func extractGoogleAdsMessage(b []byte) string {
-	var raw map[string]any
-	if json.Unmarshal(b, &raw) != nil {
-		return strings.TrimSpace(string(b))
-	}
-	if e, ok := raw["error"].(map[string]any); ok {
-		if m, ok := e["message"].(string); ok {
-			return m
-		}
-	}
-	return strings.TrimSpace(string(b))
 }
 
 func ResourceNameFromMutate(resp map[string]any) (string, error) {

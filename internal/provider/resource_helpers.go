@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -154,6 +155,11 @@ func setCreated(id string, idp *types.String, rnp *types.String) {
 	*rnp = types.StringValue(id)
 }
 func addAPIError(diags *diag.Diagnostics, summary string, err error) {
+	var apiErr *googleads.GoogleAdsError
+	if errors.As(err, &apiErr) {
+		diags.AddError(summary, apiErr.DiagnosticDetail())
+		return
+	}
 	diags.AddError(summary, err.Error())
 }
 func removeOp(resourceName string) []map[string]any {
