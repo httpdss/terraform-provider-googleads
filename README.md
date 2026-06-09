@@ -214,6 +214,10 @@ export GOOGLEADS_VALIDATE_ONLY=true
 
 or set `validate_only = true` in the provider block.
 
+## API diagnostics
+
+When Google Ads API calls fail, the provider parses `GoogleAdsFailure` details from REST responses and surfaces actionable Terraform diagnostics including the Google Ads error code, message, trigger, field path, and operation index when available. Request credentials and token values are not included in diagnostics.
+
 ## Delete behavior
 
 Google Ads resources are generally removed through each service's `remove` operation rather than physically deleted from historical reporting. The provider uses remove operations for campaign budgets, campaigns, ad groups, ad group criteria, ad group ads, and campaign criteria. Removed resources may remain visible in Google Ads history/reporting, but Terraform removes them from state after a successful destroy.
